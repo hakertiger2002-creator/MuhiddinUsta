@@ -90,7 +90,7 @@ EMOJIS = {
 # Til matnlari
 TEXTS = {
     "uz": {
-        "welcome": f"{EMOJIS['hello']} Assalomu alaykum! Usta Elbek Botiga xush kelibsiz!",
+        "welcome": f"{EMOJIS['hello']} Assalomu alaykum! Usta Muhiddin Botiga xush kelibsiz!",
         "full_welcome": "Hurmatli foydalanuvchi! Siz bu bot orqali o'zingizning uyingiz uchun eng so'nggi texnologiyalar va eng so'nggi tamirlash mahsulotlaridan xabardor bo'lishingiz mumkin. Uz/Ru tillarda tarjima bilan.",
         "register_prompt": "Hurmatli foydalanuvchi! Botdan to'liq foydalanish huquqiga ega bo'lish uchun ma'lumotlaringizni to'liq kiriting.",
         "choose_language": f"{EMOJIS['language']} Iltimos, kerakli tilni tanlang:",
@@ -123,7 +123,7 @@ TEXTS = {
         "telegram": "Telegram"
     },
     "ru": {
-        "welcome": f"{EMOJIS['hello']} Здравствуйте! Добро пожаловать в бот Usta Elbek!",
+        "welcome": f"{EMOJIS['hello']} Здравствуйте! Добро пожаловать в бот Usta Muhiddiin!",
         "full_welcome": "Уважаемый пользователь! С помощью этого бота вы можете быть в курсе последних технологий и последних ремонтных продуктов для вашего дома. С переводом на уз/рус языках.",
         "register_prompt": "Уважаемый пользователь! Для получения права на полное использование бота введите свои данные полностью.",
         "choose_language": f"{EMOJIS['language']} Пожалуйста, выберите нужный язык:",
