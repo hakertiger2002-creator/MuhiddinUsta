@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: usta-elbek-bot
+    env: python
+    region: frankfurt
+    plan: free
+    
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    
+    startCommand: python main.py
+    
+    # ✅ Portni aniq belgilash
+    envVars:
+      - key: PORT
+        value: 10001  # ❗ 10000 emas, 10001
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: RENDER
+        value: true
+    
+    healthCheckPath: /health
+    autoDeploy: true
