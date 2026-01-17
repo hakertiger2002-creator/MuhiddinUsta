@@ -11,7 +11,8 @@ from aiogram.types import (
     Message, ReplyKeyboardMarkup, KeyboardButton, 
     ReplyKeyboardRemove, CallbackQuery, Location,
     ContentType, InlineKeyboardMarkup, InlineKeyboardButton,
-    FSInputFile, PhotoSize, Video, Document, InputFile
+    FSInputFile, PhotoSize, Video, Document, InputFile,
+    InputMediaPhoto, InputMediaVideo, InputMediaDocument  # ✅ Qo'shing
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -274,31 +275,33 @@ def get_main_menu_keyboard(lang: str = 'uz'):
         persistent=True
     )
 
-# Sahifalash uchun inline klaviatura (saqlash bloklangan)
 def get_pagination_keyboard(category: str, current_page: int, total_pages: int, lang: str = 'uz'):
     keyboard = []
     
     # Sahifa tugmalari
     page_buttons = []
+    
+    # Oldingi sahifa tugmasi
     if current_page > 0:
         page_buttons.append(InlineKeyboardButton(
-            text=f"{EMOJIS['prev']}",
+            text=f"{EMOJIS['prev']} Oldingi",
             callback_data=f"content_page:{category}:{current_page-1}"
         ))
     
-    # ✅ O'ZGARISH: Page raqami ko'rsatilmaydi
-    # page_buttons.append(InlineKeyboardButton(
-    #     text=f"{current_page+1}/{total_pages}",
-    #     callback_data="no_action"
-    # ))
+    # Sahifa raqami (faqat ko'rsatish, bosilmaydi)
+    page_buttons.append(InlineKeyboardButton(
+        text=f"{current_page+1}/{total_pages}",
+        callback_data="no_action"
+    ))
     
+    # Keyingi sahifa tugmasi
     if current_page < total_pages - 1:
         page_buttons.append(InlineKeyboardButton(
-            text=f"{EMOJIS['next']}",
+            text=f"Keyingi {EMOJIS['next']}",
             callback_data=f"content_page:{category}:{current_page+1}"
         ))
     
-    if page_buttons:  # Faqat tugmalar bo'lsa qo'sh
+    if page_buttons:
         keyboard.append(page_buttons)
     
     # Asosiy menyuga qaytish tugmasi
@@ -322,111 +325,165 @@ async def show_simple_animation(message: Message, text: str):
     await asyncio.sleep(0.5)
     return msg
 
-
 async def show_content(message: Message, category_code: str, page: int = 0, lang: str = 'uz'):
-    """Kategoriya bo'yicha kontentlarni sahifalab ko'rsatish (saqlash bloklangan)"""
+    """Kategoriya bo'yicha kontentlarni sahifalab ko'rsatish (har sahifada 10 ta)"""
     user_id = message.from_user.id
     
-    # Kontentlarni olish
-    contents = db.get_contents_by_category(category_code, limit=1, offset=page)
+    # Kontentlarni olish (har sahifada 10 ta)
+    ITEMS_PER_PAGE = 10
+    offset = page * ITEMS_PER_PAGE
+    contents = db.get_contents_by_category(category_code, limit=ITEMS_PER_PAGE, offset=offset)
     
     if not contents:
         await message.answer(TEXTS[lang]["no_content"])
         return
     
     total_contents = db.count_contents_by_category(category_code)
-    total_pages = max(1, total_contents)
+    total_pages = (total_contents + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE  # Round up division
     
-    if page >= total_contents:
-        page = total_contents - 1
+    if page >= total_pages:
+        page = total_pages - 1
     
-    content = contents[0]
-    file_id = content[3]
-    
-    common_params = {
-        "protect_content": True,
-        "has_spoiler": True,
-        "reply_markup": get_pagination_keyboard(category_code, page, total_pages, lang)
+    # Kategoriya nomi
+    category_names = {
+        "uz": {
+            "classic": "🛠️ Klassik Tamirlash",
+            "glue": "🎨 Lepka Yopishtirish",
+            "gypsum": "🏠 Gipsi Carton Fason",
+            "hitech": "💻 HiTech Tamirlash",
+            "full": "🔨 To'liq Tamirlash",
+            "video": "📹 Video Joylash"
+        },
+        "ru": {
+            "classic": "🛠️ Классический Ремонт",
+            "glue": "🎨 Поклейка Обоев",
+            "gypsum": "🏠 Гипсокартон Фасон",
+            "hitech": "💻 HiTech Ремонт",
+            "full": "🔨 Полный Ремонт",
+            "video": "📹 Видео Работы"
+        }
     }
     
-    try:
-        if content[2] == 'photo':
-            await message.answer_photo(
-                photo=file_id,
-                caption=" ",
-                **common_params
-            )
+    category_name = category_names.get(lang, {}).get(category_code, category_code)
+    
+    # Sahifa sarlavhasi
+    header_text = f"<b>{category_name}</b>\n"
+    header_text += f"📄 <b>Sahifa {page+1}/{total_pages}</b>\n"
+    header_text += f"📊 Jami: {total_contents} ta kontent\n\n"
+    header_text += f"🔢 <b>Kontentlar {offset+1}-{offset+len(contents)}</b>\n"
+    header_text += "─" * 30
+    
+    await message.answer(header_text, parse_mode="HTML")
+    
+    # Har bir kontentni alohida yuborish (HIMOYALANGAN)
+    for i, content in enumerate(contents, 1):
+        content_num = offset + i
+        file_id = content[3]
+        caption = content[4] or ""
         
-        elif content[2] == 'video':
-            await message.answer_video(
-                video=file_id,
-                caption=" ",
-                supports_streaming=False,
-                **common_params
-            )
+        # Caption tayyorlash
+        content_caption = f"<b>{category_name}</b>\n"
+        content_caption += f"📊 <b>Kontent {content_num}/{total_contents}</b>\n"
+        if caption:
+            content_caption += f"📝 {caption[:50]}"
+            if len(caption) > 50:
+                content_caption += "..."
+            content_caption += "\n"
+        content_caption += f"📄 Sahifa {page+1}/{total_pages}"
         
-        elif content[2] == 'document':
-            await message.answer_document(
-                document=file_id,
-                caption=" ",
-                disable_content_type_detection=True,
-                **common_params
-            )
-        
-        # ✅ YANGI: Tilga qarab ogohlantirish xabarlari
-        warning_messages = {
-            "uz": """⚠️ DIQQAT: Bu kontent himoyalangan!
-📵 Saqlash, yuklab olish, nusxa olish TAQIQLANGAN!
-⚖️ Huquqbuzarlik qonuniy javobgarlikni keltirib chiqaradi.
+        try:
+            if content[2] == 'photo':
+                await message.answer_photo(
+                    photo=file_id,
+                    caption=content_caption,
+                    parse_mode="HTML",
+                    protect_content=True,  # ✅ TELEGRAM HIMOYASI
+                    has_spoiler=True       # ✅ SPOILER HIMOYASI
+                )
+            
+            elif content[2] == 'video':
+                await message.answer_video(
+                    video=file_id,
+                    caption=content_caption,
+                    parse_mode="HTML",
+                    protect_content=True,  # ✅ TELEGRAM HIMOYASI
+                    has_spoiler=True,      # ✅ SPOILER HIMOYASI
+                    supports_streaming=False
+                )
+            
+            elif content[2] == 'document':
+                await message.answer_document(
+                    document=file_id,
+                    caption=content_caption,
+                    parse_mode="HTML",
+                    protect_content=True,  # ✅ TELEGRAM HIMOYASI
+                    has_spoiler=True,      # ✅ SPOILER HIMOYASI
+                    disable_content_type_detection=True
+                )
+            
+            # Kichik kechikish (Telegram limitlari uchun)
+            await asyncio.sleep(0.3)
+            
+        except Exception as e:
+            logger.error(f"Failed to send content {content_num}: {e}")
+            continue
+    
+    # Ogohlantirish xabari (HIMOYA)
+    warning_messages = {
+        "uz": """🔒 <b>KONTENT HIMOYALANGAN!</b>
 
-⛔ <b>Ta'qiqlangan amallar:</b>
+⚠️ <b>SAQLASH IMKONI YO'Q!</b>
+
+❌ <b>TA'QIBLANADIGAN HARAKATLAR:</b>
+• Yuklab olish
 • Skrinshot olish
 • Ekran yozib olish
 • Forward qilish
 • Nusxa ko'chirish
-• Yuklab olish
 
-🛡️ <b>Himoya:</b>
-• Telegram himoyasi faollashtirilgan
-• Spoiler himoyasi
-• Maxsus kodlash
+⚖️ <b>JAZOLAR:</b>
+• 1-ogohlantirish: Ushbu xabar
+• 2-ogohlantirish: 3 kunlik bloklash
+• 3-ogohlantirish: Doimiy bloklash
 
-📞 <b>Qonuniy foydalanish uchun:</b>
+📞 <b>Savollar uchun:</b>
 +998 88 044-55-50""",
-            
-            "ru": """⚠️ ВНИМАНИЕ: Этот контент защищен!
-📵 Сохранение, загрузка, копирование ЗАПРЕЩЕНО!
-⚖️ Нарушение прав влечет юридическую ответственность.
+        
+        "ru": """🔒 <b>КОНТЕНТ ЗАЩИЩЕН!</b>
 
-⛔ <b>Запрещенные действия:</b>
-• Делать скриншоты
-• Записывать экран
-• Пересылать
-• Копировать
-• Загружать
+⚠️ <b>СОХРАНИТЬ НЕВОЗМОЖНО!</b>
 
-🛡️ <b>Защита:</b>
-• Защита Telegram активирована
-• Защита спойлерами
-• Специальное кодирование
+❌ <b>ПРЕСЛЕДУЕМЫЕ ДЕЙСТВИЯ:</b>
+• Скачивание
+• Скриншоты
+• Запись экрана
+• Пересылка
+• Копирование
 
-📞 <b>Для законного использования:</b>
+⚖️ <b>НАКАЗАНИЯ:</b>
+• 1-е предупреждение: Это сообщение
+• 2-е предупреждение: Блокировка на 3 дня
+• 3-е предупреждение: Постоянная блокировка
+
+📞 <b>По вопросам:</b>
 +998 88 044-55-50"""
-        }
-        
-        # Ogohlantirish xabarini yuborish
-        warning = await message.answer(
-            warning_messages[lang],
-            parse_mode="HTML"
-        )
-        
-        # 10 soniyadan keyin ogohlantirishni o'chirish
-        await asyncio.sleep(10)
-        await warning.delete()
-        
-    except Exception as e:
-        logger.error(f"Content display error: {e}")
-        await message.answer(f"❌ Kontentni ko'rsatishda xatolik: {str(e)}")
+    }
+    
+    warning = await message.answer(
+        warning_messages[lang],
+        parse_mode="HTML"
+    )
+    
+    # Sahifa navigatsiyasi
+    keyboard = get_pagination_keyboard(category_code, page, total_pages, lang)
+    await message.answer(
+        "Sahifalarni o'zgartirish uchun quyidagi tugmalardan foydalaning:",
+        reply_markup=keyboard
+    )
+    
+    # 8 soniyadan keyin ogohlantirishni o'chirish
+    await asyncio.sleep(8)
+    await warning.delete()
 
 # Callback query handler (sahifalash uchun)
 @dp.callback_query(F.data.startswith("content_page:"))
