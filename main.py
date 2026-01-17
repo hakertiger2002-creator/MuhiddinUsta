@@ -861,7 +861,7 @@ async def contact_master(message: Message):
     phone_number = "+998 88 044-55-50"
     
     if lang == 'uz':
-        text = f"""<b>📞 Usta Elbek bilan bog'lanish:</b>
+        text = f"""<b>📞 Usta Muhiddin bilan bog'lanish:</b>
 
 <code>{phone_number}</code>
 
@@ -1545,8 +1545,8 @@ async def handle_accept_location(callback: CallbackQuery):
             lang = user_data[3]
             
             user_message = {
-                "uz": "✅ <b>Joylashuvingiz tasdiqlandi!</b>\n\nUsta Elbek tez orada siz bilan bog'lanadi.\n📞 Telefon: +998 95 902-32-32",
-                "ru": "✅ <b>Ваше местоположение подтверждено!</b>\n\nМастер Элбек скоро свяжется с вами.\n📞 Телефон: +998 95 902-32-32"
+                "uz": "✅ <b>Joylashuvingiz tasdiqlandi!</b>\n\nUsta Muhiddin tez orada siz bilan bog'lanadi.\n📞 Telefon: +998 95 902-32-32",
+                "ru": "✅ <b>Ваше местоположение подтверждено!</b>\n\nМастер Мухиддин скоро свяжется с вами.\n📞 Телефон: +998 95 902-32-32"
             }
             
             try:
@@ -1727,7 +1727,7 @@ Bu amal bot qoidalariga ziddir.
 📞 <b>Savollar uchun:</b>
 +998 88 044-55-50
 
-<code>© Usta Elbek. Barcha huquqlar himoyalangan.</code>""",
+<code>© Usta Muhiddin. Barcha huquqlar himoyalangan.</code>""",
                 
                 "ru": """🚫 <b>ПРЕДУПРЕЖДЕНИЕ!</b>
 
@@ -1743,7 +1743,7 @@ Bu amal bot qoidalariga ziddir.
 📞 <b>По вопросам:</b>
 +998 88 044-55-50
 
-<code>© Muhiddin Usta. Все права защищены.</code>"""
+<code>© Usta Muhiddin. Все права защищены.</code>"""
             }
             
             warning_msg = await message.answer(

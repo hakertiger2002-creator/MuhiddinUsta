@@ -654,7 +654,7 @@ async def process_user_id_input(message: Message, state: FSMContext):
                 welcome_messages = {
                     "uz": f"""🎉 <b>Assalomu alaykum, {full_name}!</b>
 
-✅ <b>Siz Usta Elbek botiga muvaffaqiyatli qo'shildingiz!</b>
+✅ <b>Siz Usta Muihiddin botiga muvaffaqiyatli qo'shildingiz!</b>
 
 🏠 <b>Bizning xizmatlarimiz:</b>
 • Klassik tamirlash
@@ -670,8 +670,8 @@ async def process_user_id_input(message: Message, state: FSMContext):
 • Joylashuv yuborish
 • Videolarni tomosha qilish
 
-📞 <b>Usta Elbek bilan bog'lanish:</b>
-+998 95 902-32-32
+📞 <b>Usta Muhiddin bilan bog'lanish:</b>
++998 88 044-55-50
 
 📍 <b>Manzil:</b> Toshkent
 
@@ -680,11 +680,11 @@ Dushanba-Yakshanba: 9:00 - 18:00
 
 💖 <b>Biz sizning uyingizni chiroyli qilish uchun mavjudmiz!</b>
 
-<code>© Usta Elbek. Barcha huquqlar himoyalangan.</code>""",
+<code>© Usta Muhiddin. Barcha huquqlar himoyalangan.</code>""",
                     
                     "ru": f"""🎉 <b>Здравствуйте, {full_name}!</b>
 
-✅ <b>Вы успешно добавлены в бот Usta Elbek!</b>
+✅ <b>Вы успешно добавлены в бот Usta Muhiddin!</b>
 
 🏠 <b>Наши услуги:</b>
 • Классический ремонт
@@ -701,7 +701,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
 • Просмотр видео
 
 📞 <b>Связаться с мастером Элбеком:</b>
-+998 95 902-32-32
++998 88 044-55-50
 
 📍 <b>Адрес:</b> Ташкент
 
@@ -710,7 +710,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
 
 💖 <b>Мы здесь, чтобы сделать ваш дом красивым!</b>
 
-<code>© Usta Elbek. Все права защищены.</code>"""
+<code>© Usta Muhiddin. Все права защищены.</code>"""
                 }
                 
                 # Global bot_instance dan foydalanish
@@ -864,7 +864,7 @@ async def process_broadcast_type(message: Message, state: FSMContext):
             "<i>Namuna:</i>\n"
             "<code>🎉 Yangi chegirma!\n\n"
             "🏠 Tamirlash xizmatlari uchun 20% chegirma!\n"
-            "📞 +998 95 902-32-32</code>",
+            "📞 +998 88 044-55-50</code>",
             parse_mode="HTML",
             reply_markup=get_back_keyboard()
         )
@@ -1106,7 +1106,7 @@ Botdan foydalana olmaysiz.
 • Noto'g'ri xatti-harakatlar uchun
 
 📞 <b>Shikoyat yoki izoh uchun:</b>
-+998 95 902-32-32
++998 88 044-55-50
 
 ⚠️ <b>Eslatma:</b>
 Agar sizda savollar bo'lsa yoki xatolik deb o'ylasangiz, yuqoridagi raqamga qo'ng'iroq qiling.
@@ -1119,7 +1119,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
 • Sababni tushuntiring
 • Kafolat bering
 
-<code>© Usta Elbek. Barcha huquqlar himoyalangan.</code>""",
+<code>© Usta Muhiddin. Barcha huquqlar himoyalangan.</code>""",
                 
                 "ru": """🚫 <b>ПРЕДУПРЕЖДЕНИЕ!</b>
 
@@ -1133,7 +1133,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
 • За неподобающее поведение
 
 📞 <b>Для жалоб или комментариев:</b>
-+998 95 902-32-32
++998 88 044-55-50
 
 ⚠️ <b>Примечание:</b>
 Если у вас есть вопросы или вы считаете это ошибкой, позвоните по указанному номеру.
@@ -1146,7 +1146,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
 • Объясните причину
 • Дайте гарантии
 
-<code>© Usta Elbek. Все права защищены.</code>"""
+<code>© Usta Muhiddin. Все права защищены.</code>"""
             }
             
             # Foydalanuvchiga xabar yuborish
@@ -1236,7 +1236,7 @@ async def process_unblock_user(message: Message, state: FSMContext):
 
 ✅ <b>Sizning hisobingiz blokdan olindi!</b>
 
-Siz endi Usta Elbek botidan to'liq foydalana olasiz.
+Siz endi Usta Muhiddin botidan to'liq foydalana olasiz.
 
 ⚠️ <b>OGOHLANTIRISH:</b>
 • Bot qoidalariga qat'iy rioya qiling
@@ -1244,7 +1244,7 @@ Siz endi Usta Elbek botidan to'liq foydalana olasiz.
 • Qonuniy huquqlarni buzish javobgarlikni keltirib chiqaradi
 
 📞 <b>Yordam uchun:</b>
-+998 95 902-32-32
++998 88 044-55-50
 
 🏠 <b>Xizmatlar:</b>
 • Klassik tamirlash
@@ -1263,7 +1263,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
 
 💖 <b>Xursand mijoz - bizning maqsadimiz!</b>
 
-<code>© Usta Elbek. Barcha huquqlar himoyalangan.</code>""",
+<code>© Usta Muhiddin. Barcha huquqlar himoyalangan.</code>""",
                 
                 "ru": """🎉 <b>Поздравляем!</b>
 
@@ -1277,7 +1277,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
 • Нарушение законных прав влечет ответственность
 
 📞 <b>Для помощи:</b>
-+998 95 902-32-32
++998 88 044-55-50
 
 🏠 <b>Услуги:</b>
 • Классический ремонт
@@ -1296,7 +1296,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
 
 💖 <b>Довольный клиент - наша цель!</b>
 
-<code>© Usta Elbek. Все права защищены.</code>"""
+<code>© Usta Muhiddin. Все права защищены.</code>"""
             }
             
             # Foydalanuvchiga xabar yuborish
