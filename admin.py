@@ -1,11 +1,12 @@
-# admin.py - TO'LIQ YANGILASH
+# admin.py - TO'LIQ YANGILASH (JOYLASHUVLAR PANELI BILAN)
 
 from aiogram import Bot, F
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, 
     Message, CallbackQuery,
     PhotoSize, Video, Document,
-    InlineKeyboardMarkup, InlineKeyboardButton
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    Location
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -14,7 +15,7 @@ from aiogram.enums import ParseMode
 from database import db
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ✅ TO'G'RI: AdminStates class'ini bu yerda yaratamiz (FAQAT BIR MARTTA)
 class AdminStates(StatesGroup):
@@ -38,18 +39,11 @@ class AdminStates(StatesGroup):
     deleting_content = State()
     waiting_content_id = State()
     
-     # Odam qo'shish
+    # Odam qo'shish
     adding_user = State()
     waiting_for_user_fullname = State()
     waiting_for_user_phone = State()
     waiting_for_user_language = State()
-    
-    # Xabar yuborish (mavjud)
-    sending_message = State()
-    waiting_broadcast_text = State()
-    waiting_broadcast_photo = State()
-    waiting_broadcast_video = State()
-    waiting_broadcast_document = State()
 
 # ✅ Bot va admin ID uchun global o'zgaruvchilar
 bot_instance = None  # Bot instansiyasini saqlash uchun
@@ -64,20 +58,34 @@ def set_bot_and_admin(bot_instance_param, admin_id):
 # Logging
 logger = logging.getLogger(__name__)
 
-# Admin panel klaviaturasini yangilang:
+# ==================== ASOSIY KLAVIATURALAR ====================
+
 def get_admin_keyboard():
+    """Asosiy admin panel klaviaturasi"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📊 Foydalanuvchilar Ma'lumotlari"), KeyboardButton(text="📨 Xabar Yuborish")],
             [KeyboardButton(text="➕ Kontent Qo'shish"), KeyboardButton(text="🗑️ Kontent O'chirish")],
             [KeyboardButton(text="👥 Odam Qo'shish"), KeyboardButton(text="📋 Kontentlar Ro'yxati")],
             [KeyboardButton(text="🚫 Bloklash"), KeyboardButton(text="✅ Blokdan Ochish")],
-            [KeyboardButton(text="📍 Joylashuvni Ko'rish"), KeyboardButton(text="🔙 Asosiy Menyuga Qaytish")]
+            [KeyboardButton(text="📍 Joylashuvlarni Boshqarish"), KeyboardButton(text="🔙 Asosiy Menyuga Qaytish")]
         ],
         resize_keyboard=True,
         persistent=True
     )
-    
+
+def get_locations_management_keyboard():
+    """Joylashuvlarni boshqarish klaviaturasi"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📍 Eng so'nggi joylashuv"), KeyboardButton(text="📋 Barcha joylashuvlar")],
+            [KeyboardButton(text="🔄 Joylashuvlarni yangilash"), KeyboardButton(text="🗑️ Eski joylashuvlar")],
+            [KeyboardButton(text="✅ Tasdiqlanganlar"), KeyboardButton(text="❌ Rad etilganlar")],
+            [KeyboardButton(text="⏳ Kutilayotganlar"), KeyboardButton(text="🔙 Admin Menyuga")]
+        ],
+        resize_keyboard=True,
+        persistent=True
+    )
 
 def get_content_categories_keyboard(action: str = "add"):
     """Kontent kategoriyalari klaviaturasi"""
@@ -101,6 +109,7 @@ def get_content_categories_keyboard(action: str = "add"):
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True), text
 
 def get_content_type_keyboard():
+    """Kontent turi klaviaturasi"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🖼️ Rasm"), KeyboardButton(text="📹 Video")],
@@ -110,32 +119,12 @@ def get_content_type_keyboard():
     )
 
 def get_back_keyboard():
+    """Orqaga klaviaturasi"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔙 Orqaga")]
         ],
         resize_keyboard=True
-    )
-
-def get_protection_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔒 Yuqori Himoya"), KeyboardButton(text="🛡️ O'rta Himoya")],
-            [KeyboardButton(text="⚠️ Past Himoya"), KeyboardButton(text="🔙 Orqaga")]
-        ],
-        resize_keyboard=True
-    )
-    
-def get_users_management_keyboard():
-    """Foydalanuvchilarni boshqarish klaviaturasi"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="👥 Odam Qo'shish"), KeyboardButton(text="📊 Foydalanuvchilar Ma'lumotlari")],
-            [KeyboardButton(text="📨 Xabar Yuborish"), KeyboardButton(text="🚫 Bloklash")],
-            [KeyboardButton(text="✅ Blokdan Ochish"), KeyboardButton(text="🔙 Admin Menyuga")]
-        ],
-        resize_keyboard=True,
-        persistent=True
     )
 
 def get_user_language_keyboard():
@@ -146,23 +135,387 @@ def get_user_language_keyboard():
             [KeyboardButton(text="🔙 Orqaga")]
         ],
         resize_keyboard=True
-    )    
+    )
 
-async def set_protection_level(message: Message, state: FSMContext):
-    """Himoya darajasini sozlash"""
+# ==================== JOYLASHUVLAR PANELI ====================
+
+async def show_latest_locations(message: Message):
+    """Eng so'nggi joylashuvlarni ko'rsatish"""
     if message.from_user.id != ADMIN_ID:
         return
     
-    protection_map = {
-        "🔒 Yuqori Himoya": 3,
-        "🛡️ O'rta Himoya": 2,
-        "⚠️ Past Himoya": 1
-    }
+    locations = db.get_latest_locations(limit=10)
     
-    if message.text in protection_map:
-        level = protection_map[message.text]
-        await state.update_data(protection_level=level)
-        await message.answer(f"✅ Himoya darajasi {level} ga o'rnatildi")    
+    if not locations:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Yangilash",
+                    callback_data="refresh_locations_admin"
+                )
+            ]
+        ])
+        
+        await message.answer(
+            "📍 <b>Hech qanday joylashuv yo'q.</b>\n\n"
+            "Foydalanuvchilar joylashuv yuborganda, bu yerda ko'rinadi.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        return
+    
+    # Eng so'nggi joylashuvni ko'rsatish
+    latest_location = locations[0]
+    await show_location_details(message, latest_location, "latest")
+
+async def show_location_details(message: Message, location_data, source="list"):
+    """Joylashuv tafsilotlarini ko'rsatish"""
+    location_id = location_data[0]
+    user_name = location_data[2]
+    phone = location_data[3]
+    latitude = location_data[4]
+    longitude = location_data[5]
+    status = location_data[6]
+    sent_time = location_data[7]
+    
+    # Vaqtni formatlash
+    if isinstance(sent_time, str):
+        date_part = sent_time.split()[0]
+        time_part = sent_time.split()[1][:5] if len(sent_time.split()) > 1 else "00:00"
+    else:
+        date_part = str(sent_time)[:10]
+        time_part = str(sent_time)[11:16]
+    
+    # Status ranglari
+    status_icons = {
+        'pending': '🟡 Kutilmoqda',
+        'accepted': '🟢 Tasdiqlangan', 
+        'rejected': '🔴 Rad etilgan'
+    }
+    status_display = status_icons.get(status, status)
+    
+    # Joylashuv haqida ma'lumot
+    location_info = f"""📍 <b>JOYLASHUV #{location_id}</b>
+
+{status_display}
+👤 <b>Foydalanuvchi:</b> {user_name}
+📞 <b>Telefon:</b> {phone}
+📅 <b>Sana:</b> {date_part}
+⏰ <b>Vaqt:</b> {time_part}
+🌐 <b>Koordinatalar:</b>
+   • Kenglik: {latitude}
+   • Uzunlik: {longitude}
+
+🎯 <b>Harakatlar:</b>"""
+
+    # Inline klaviatura
+    keyboard_buttons = []
+    
+    # Joylashuvni ko'rish
+    keyboard_buttons.append([
+        InlineKeyboardButton(
+            text="📍 Joylashuvni ko'rish",
+            callback_data=f"view_location:{location_id}"
+        )
+    ])
+    
+    # Status tugmalari (faqat kutilayotgan joylashuv uchun)
+    if status == 'pending':
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="✅ Tasdiqlash",
+                callback_data=f"accept_location:{location_id}"
+            ),
+            InlineKeyboardButton(
+                text="❌ Rad etish",
+                callback_data=f"reject_location:{location_id}"
+            )
+        ])
+    
+    # Navigatsiya tugmalari
+    nav_buttons = []
+    
+    if source == "latest":
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="📋 Barcha joylashuvlar",
+                callback_data="view_all_locations_admin"
+            )
+        )
+    
+    nav_buttons.append(
+        InlineKeyboardButton(
+            text="🔄 Yangilash",
+            callback_data="refresh_locations_admin"
+        )
+    )
+    
+    if nav_buttons:
+        keyboard_buttons.append(nav_buttons)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await message.answer(location_info, reply_markup=keyboard, parse_mode="HTML")
+
+async def show_all_locations_admin(message: Message):
+    """Barcha joylashuvlarni ko'rsatish"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    locations = db.get_latest_locations(limit=50)
+    
+    if not locations:
+        await message.answer("📭 Hech qanday joylashuv yo'q.")
+        return
+    
+    # Kategoriya bo'yicha filtrlash tugmalari
+    category_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⏳ Kutilayotgan", callback_data="filter_status:pending"),
+            InlineKeyboardButton(text="✅ Tasdiqlangan", callback_data="filter_status:accepted"),
+            InlineKeyboardButton(text="❌ Rad etilgan", callback_data="filter_status:rejected")
+        ],
+        [
+            InlineKeyboardButton(text="📊 Barchasi", callback_data="filter_status:all"),
+            InlineKeyboardButton(text="📅 Bugungi", callback_data="filter_today")
+        ],
+        [
+            InlineKeyboardButton(text="📍 Eng so'nggi", callback_data="view_latest_location"),
+            InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_locations_admin")
+        ]
+    ])
+    
+    # Statistikani hisoblash
+    pending_count = len([loc for loc in locations if loc[6] == 'pending'])
+    accepted_count = len([loc for loc in locations if loc[6] == 'accepted'])
+    rejected_count = len([loc for loc in locations if loc[6] == 'rejected'])
+    today = datetime.now().strftime('%Y-%m-%d')
+    today_count = len([loc for loc in locations if str(loc[7]).startswith(today)])
+    
+    stats_text = f"""📊 <b>JOYLASHUV STATISTIKASI</b>
+
+📍 <b>Jami joylashuvlar:</b> {len(locations)}
+⏳ <b>Kutilayotgan:</b> {pending_count}
+✅ <b>Tasdiqlangan:</b> {accepted_count}
+❌ <b>Rad etilgan:</b> {rejected_count}
+📅 <b>Bugungi:</b> {today_count}
+
+🔍 <b>Filtr:</b> Barchasi"""
+
+    await message.answer(stats_text, reply_markup=category_keyboard, parse_mode="HTML")
+    
+    # Joylashuvlar ro'yxati (faqat 10 tasi)
+    locations_text = "<b>📋 JOYLASHUVLAR RO'YXATI:</b>\n\n"
+    
+    for i, loc in enumerate(locations[:10], 1):
+        location_id = loc[0]
+        user_name = loc[2]
+        phone = loc[3]
+        status = loc[6]
+        
+        # Status belgilari
+        status_icon = "🟡" if status == 'pending' else "🟢" if status == 'accepted' else "🔴"
+        
+        # Telefon formatlash
+        formatted_phone = phone if len(phone) <= 15 else f"{phone[:12]}..."
+        
+        locations_text += f"{i}. {status_icon} <b>#{location_id}</b> - {user_name}\n"
+        locations_text += f"   📞 {formatted_phone}\n"
+        
+        # Vaqt
+        sent_time = loc[7]
+        if isinstance(sent_time, str):
+            time_part = sent_time.split()[1][:5] if len(sent_time.split()) > 1 else ""
+            if time_part:
+                locations_text += f"   ⏰ {time_part}\n"
+        
+        locations_text += "   ─" * 15 + "\n"
+    
+    if len(locations) > 10:
+        locations_text += f"\n📄 ... va yana {len(locations) - 10} ta joylashuv"
+    
+    # Joylashuvlar ro'yxati uchun tugmalar
+    list_keyboard_buttons = []
+    
+    # Har bir joylashuv uchun tugma (faqat 5 tasi)
+    for loc in locations[:5]:
+        location_id = loc[0]
+        user_name = loc[2]
+        status = loc[6]
+        
+        status_icon = "🟡" if status == 'pending' else "🟢" if status == 'accepted' else "🔴"
+        
+        list_keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"{status_icon} #{location_id} ({user_name[:15]}{'...' if len(user_name) > 15 else ''})",
+                callback_data=f"view_location:{location_id}"
+            )
+        ])
+    
+    list_keyboard_buttons.append([
+        InlineKeyboardButton(text="📍 Eng so'nggisi", callback_data="view_latest_location"),
+        InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_locations_admin")
+    ])
+    
+    list_keyboard = InlineKeyboardMarkup(inline_keyboard=list_keyboard_buttons)
+    
+    await message.answer(locations_text, reply_markup=list_keyboard, parse_mode="HTML")
+
+async def show_pending_locations(message: Message):
+    """Kutilayotgan joylashuvlarni ko'rsatish"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    locations = db.get_pending_locations()
+    
+    if not locations:
+        await message.answer("⏳ Hech qanday kutilayotgan joylashuv yo'q.")
+        return
+    
+    text = f"⏳ <b>KUTILAYOTGAN JOYLASHUVLAR ({len(locations)} ta)</b>\n\n"
+    
+    for i, loc in enumerate(locations, 1):
+        location_id = loc[0]
+        user_name = loc[2]
+        phone = loc[3]
+        sent_time = loc[7].split()[1][:5] if isinstance(loc[7], str) else str(loc[7])[11:16]
+        
+        text += f"{i}. 🟡 <b>#{location_id}</b> - {user_name}\n"
+        text += f"   📞 {phone} | ⏰ {sent_time}\n"
+        text += "   ─" * 15 + "\n"
+    
+    # Tugmalar
+    keyboard_buttons = []
+    
+    for loc in locations[:3]:
+        location_id = loc[0]
+        user_name = loc[2]
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"📍 #{location_id} ({user_name[:10]}...)",
+                callback_data=f"view_location:{location_id}"
+            )
+        ])
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="✅ Hammasini tasdiqlash", callback_data="accept_all_pending"),
+        InlineKeyboardButton(text="❌ Hammasini rad etish", callback_data="reject_all_pending")
+    ])
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="📋 Barcha joylashuvlar", callback_data="view_all_locations_admin"),
+        InlineKeyboardButton(text="📍 Eng so'nggisi", callback_data="view_latest_location")
+    ])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+async def show_accepted_locations(message: Message):
+    """Tasdiqlangan joylashuvlarni ko'rsatish"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    locations = db.get_latest_locations(limit=50)
+    accepted_locations = [loc for loc in locations if loc[6] == 'accepted']
+    
+    if not accepted_locations:
+        await message.answer("✅ Hech qanday tasdiqlangan joylashuv yo'q.")
+        return
+    
+    text = f"✅ <b>TASDIQLANGAN JOYLASHUVLAR ({len(accepted_locations)} ta)</b>\n\n"
+    
+    for i, loc in enumerate(accepted_locations[:10], 1):
+        location_id = loc[0]
+        user_name = loc[2]
+        phone = loc[3]
+        sent_time = loc[7].split()[1][:5] if isinstance(loc[7], str) else str(loc[7])[11:16]
+        
+        text += f"{i}. 🟢 <b>#{location_id}</b> - {user_name}\n"
+        text += f"   📞 {phone} | ⏰ {sent_time}\n"
+        text += "   ─" * 15 + "\n"
+    
+    if len(accepted_locations) > 10:
+        text += f"\n📄 ... va yana {len(accepted_locations) - 10} ta joylashuv"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📋 Barcha joylashuvlar", callback_data="view_all_locations_admin"),
+            InlineKeyboardButton(text="📍 Eng so'nggisi", callback_data="view_latest_location")
+        ]
+    ])
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+async def show_rejected_locations(message: Message):
+    """Rad etilgan joylashuvlarni ko'rsatish"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    locations = db.get_latest_locations(limit=50)
+    rejected_locations = [loc for loc in locations if loc[6] == 'rejected']
+    
+    if not rejected_locations:
+        await message.answer("❌ Hech qanday rad etilgan joylashuv yo'q.")
+        return
+    
+    text = f"❌ <b>RAD ETILGAN JOYLASHUVLAR ({len(rejected_locations)} ta)</b>\n\n"
+    
+    for i, loc in enumerate(rejected_locations[:10], 1):
+        location_id = loc[0]
+        user_name = loc[2]
+        phone = loc[3]
+        sent_time = loc[7].split()[1][:5] if isinstance(loc[7], str) else str(loc[7])[11:16]
+        
+        text += f"{i}. 🔴 <b>#{location_id}</b> - {user_name}\n"
+        text += f"   📞 {phone} | ⏰ {sent_time}\n"
+        text += "   ─" * 15 + "\n"
+    
+    if len(rejected_locations) > 10:
+        text += f"\n📄 ... va yana {len(rejected_locations) - 10} ta joylashuv"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📋 Barcha joylashuvlar", callback_data="view_all_locations_admin"),
+            InlineKeyboardButton(text="📍 Eng so'nggisi", callback_data="view_latest_location")
+        ],
+        [
+            InlineKeyboardButton(text="🗑️ Barchasini o'chirish", callback_data="delete_all_rejected")
+        ]
+    ])
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+async def delete_old_locations(message: Message):
+    """Eski joylashuvlarni o'chirish"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🗑️ 7 kun oldingilarni o'chirish", callback_data="delete_old:7"),
+            InlineKeyboardButton(text="🗑️ 30 kun oldingilarni o'chirish", callback_data="delete_old:30")
+        ],
+        [
+            InlineKeyboardButton(text="❌ Rad etilganlarni o'chirish", callback_data="delete_all_rejected"),
+            InlineKeyboardButton(text="🔙 Orqaga", callback_data="locations_management_back")
+        ]
+    ])
+    
+    total_locations = len(db.get_latest_locations(limit=1000))
+    
+    await message.answer(
+        f"🗑️ <b>ESKI JOYLASHUVLARNI O'CHIRISH</b>\n\n"
+        f"📊 Jami joylashuvlar: {total_locations}\n\n"
+        f"<i>Qaysi joylashuvlarni o'chirmoqchisiz?</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+# ==================== KONTENT QO'SHISH ====================
 
 # Kontent qo'shishni boshlash
 async def start_adding_content(message: Message, state: FSMContext):
@@ -324,6 +677,8 @@ async def process_content_file(message: Message, state: FSMContext):
     await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
     await state.clear()
 
+# ==================== FOYDALANUVCHILAR MA'LUMOTLARI ====================
+
 # Foydalanuvchilar ma'lumotlari
 async def show_users_info(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -351,7 +706,7 @@ async def show_users_info(message: Message):
     
     await message.answer(text, parse_mode=ParseMode.HTML)
 
-# ============ ODAM QO'SHISH FUNKSIYALARI ============
+# ==================== ODAM QO'SHISH ====================
 
 async def start_adding_user(message: Message, state: FSMContext):
     """Odam qo'shishni boshlash"""
@@ -504,7 +859,6 @@ async def process_user_language(message: Message, state: FSMContext):
         bot_deep_link = f"https://t.me/{bot_username}?start={user_id}"
         
         # 2. Telegram telefon havolasi
-        # Telefon raqamini tozalash
         clean_phone = phone_number.replace("+", "").replace(" ", "")
         telegram_link = f"https://t.me/+{clean_phone}"
         
@@ -538,9 +892,6 @@ async def process_user_language(message: Message, state: FSMContext):
         await message.answer(telegram_link_message, parse_mode="HTML")
         
         # ✅ TELEGRAM PROFIL HAVOLASINI KLIK QILISH UCHUN INLINE TUGMA
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        
-        # Telefon raqamidan Telegram profiliga havola
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
@@ -564,12 +915,6 @@ async def process_user_language(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
         
-        # ✅ INLINE TUGMA UCHUN CALLBACK HANDLER (main.py ga qo'shing)
-        # @dp.callback_query(F.data.startswith("copy_link:"))
-        # async def handle_copy_link(callback: CallbackQuery):
-        #     link = callback.data.split(":")[1]
-        #     await callback.answer(f"Havola nusxalandi: {link[:30]}...")
-        
     except Exception as e:
         await message.answer(f"❌ Xatolik yuz berdi: {str(e)}")
     
@@ -577,182 +922,7 @@ async def process_user_language(message: Message, state: FSMContext):
     await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
     await state.clear()
 
-# ✅ YANGI: User ID ni qabul qilish funksiyasi
-async def process_user_id_input(message: Message, state: FSMContext):
-    """Foydalanuvchi ID sini qabul qilish"""
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    if message.text == "🔙 Orqaga":
-        await message.answer(
-            "🌐 <b>Tilni tanlang:</b>",
-            parse_mode="HTML",
-            reply_markup=get_user_language_keyboard()
-        )
-        await state.set_state(AdminStates.waiting_for_user_language)
-        return
-    
-    # ID ni tekshirish
-    try:
-        if message.text == "0":
-            # Avtomatik ID yaratish
-            import random
-            user_id = random.randint(1000000000, 9999999999)
-            await message.answer(
-                f"🆔 <b>Avtomatik ID yaratildi:</b> {user_id}",
-                parse_mode="HTML"
-            )
-        else:
-            user_id = int(message.text)
-            if user_id <= 0:
-                await message.answer(
-                    "❌ <b>Noto'g'ri ID!</b> Iltimos, musbat son kiriting.",
-                    parse_mode="HTML",
-                    reply_markup=get_back_keyboard()
-                )
-                return
-        
-        # Oldin saqlangan ma'lumotlarni olish
-        data = await state.get_data()
-        full_name = data.get('temp_full_name')
-        phone_number = data.get('temp_phone')
-        language = data.get('temp_language')
-        lang_text = data.get('temp_lang_text')
-        
-        # Bazaga qo'shish
-        try:
-            db.add_user(user_id, full_name, phone_number, language)
-            
-            # Bot username'ini olish
-            try:
-                from main import BOT_USERNAME
-                bot_username = BOT_USERNAME if BOT_USERNAME else "UstaElbekBot"
-            except:
-                bot_username = "UstaElbekBot"
-            
-            # Deep link yaratish
-            deep_link = f"https://t.me/{bot_username}?start={user_id}"
-            
-            # Admin uchun asosiy xabar
-            success_message = (
-                f"✅ <b>YANGI FOYDALANUVCHI QO'SHILDI!</b>\n\n"
-                f"👤 <b>Ism:</b> {full_name}\n"
-                f"🆔 <b>ID:</b> {user_id}\n"
-                f"📞 <b>Telefon:</b> {phone_number}\n"
-                f"🌐 <b>Til:</b> {lang_text}\n\n"
-                f"📊 <b>Jami foydalanuvchilar:</b> {len(db.get_all_users())}\n\n"
-                f"🔗 <b>Bot havolasi:</b>\n"
-                f"<code>{deep_link}</code>\n\n"
-                f"📝 <b>Ko'rsatma:</b>\n"
-                f"Foydalanuvchi havolani bosib botga kirgandan so'ng xush kelish xabarini oladi."
-            )
-            
-            await message.answer(success_message, parse_mode="HTML")
-            
-            # ✅ Foydalanuvchiga xabar yuborishga urinish
-            try:
-                welcome_messages = {
-                    "uz": f"""🎉 <b>Assalomu alaykum, {full_name}!</b>
-
-✅ <b>Siz Usta Muihiddin botiga muvaffaqiyatli qo'shildingiz!</b>
-
-🏠 <b>Bizning xizmatlarimiz:</b>
-• Klassik tamirlash
-• Lepka yopishtirish  
-• Gipsi carton fason
-• HiTech tamirlash
-• To'liq tamirlash
-• Video ishlar
-
-📱 <b>Bot imkoniyatlari:</b>
-• Barcha tamirlash usullarini ko'rish
-• Usta Elbek bilan bog'lanish
-• Joylashuv yuborish
-• Videolarni tomosha qilish
-
-📞 <b>Usta Muhiddin bilan bog'lanish:</b>
-+998 88 044-55-50
-
-📍 <b>Manzil:</b> Toshkent
-
-⏰ <b>Ish vaqtlari:</b>
-Dushanba-Yakshanba: 9:00 - 18:00
-
-💖 <b>Biz sizning uyingizni chiroyli qilish uchun mavjudmiz!</b>
-
-<code>© Usta Muhiddin. Barcha huquqlar himoyalangan.</code>""",
-                    
-                    "ru": f"""🎉 <b>Здравствуйте, {full_name}!</b>
-
-✅ <b>Вы успешно добавлены в бот Usta Muhiddin!</b>
-
-🏠 <b>Наши услуги:</b>
-• Классический ремонт
-• Поклейка обоев
-• Гипсокартон фасон
-• HiTech ремонт
-• Полный ремонт
-• Видео работы
-
-📱 <b>Возможности бота:</b>
-• Просмотр всех методов ремонта
-• Связь с мастером Элбеком
-• Отправка местоположения
-• Просмотр видео
-
-📞 <b>Связаться с мастером Элбеком:</b>
-+998 88 044-55-50
-
-📍 <b>Адрес:</b> Ташкент
-
-⏰ <b>Время работы:</b>
-Понедельник-Воскресенье: 9:00 - 18:00
-
-💖 <b>Мы здесь, чтобы сделать ваш дом красивым!</b>
-
-<code>© Usta Muhiddin. Все права защищены.</code>"""
-                }
-                
-                # Global bot_instance dan foydalanish
-                if 'bot_instance' in globals() and bot_instance:
-                    await bot_instance.send_message(
-                        user_id, 
-                        welcome_messages[language], 
-                        parse_mode="HTML"
-                    )
-                    
-                    logger.info(f"✅ Welcome message sent to new user {user_id} ({full_name})")
-                else:
-                    logger.error("Bot instance is not set in admin.py")
-                    await message.answer(
-                        "⚠️ <b>Bot instansiyasi sozlanmagan.</b>",
-                        parse_mode="HTML"
-                    )
-                
-            except Exception as chat_error:
-                logger.warning(f"⚠️ User {user_id} has not started chat with bot yet: {chat_error}")
-                await message.answer(
-                    f"⚠️ <b>Foydalanuvchi bot bilan suhbat boshlagan emas.</b>\n\n"
-                    f"Ushbu havolani yuboring: {deep_link}",
-                    parse_mode="HTML"
-                )
-            
-        except Exception as e:
-            await message.answer(f"❌ Bazaga saqlashda xatolik: {str(e)}")
-        
-    except ValueError:
-        await message.answer(
-            "❌ <b>Noto'g'ri format!</b> Iltimos, faqat raqam kiriting.",
-            parse_mode="HTML",
-            reply_markup=get_back_keyboard()
-        )
-        return
-    
-    # Admin panelga qaytish
-    await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
-    await state.clear()
-
-# ============ XABAR YUBORISH FUNKSIYALARI ============
+# ==================== XABAR YUBORISH ====================
 
 async def start_broadcast(message: Message, state: FSMContext):
     """Xabar yuborishni boshlash"""
@@ -911,8 +1081,6 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     await state.update_data(broadcast_text=message.text)
     
     # Tasdiqlash
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="confirm_broadcast:text"),
@@ -952,8 +1120,6 @@ async def process_broadcast_photo(message: Message, state: FSMContext):
     )
     
     # Tasdiqlash
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="confirm_broadcast:photo"),
@@ -970,18 +1136,6 @@ async def process_broadcast_photo(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-# Bloklashni boshlash
-async def start_blocking_user(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    await state.set_state(AdminStates.blocking_user)
-    
-    await message.answer(
-        "🚫 Bloklash uchun foydalanuvchi ID sini yuboring:",
-        reply_markup=get_back_keyboard()
-    )
-    
 async def process_broadcast_video(message: Message, state: FSMContext):
     """Video reklama qabul qilish"""
     if message.from_user.id != ADMIN_ID:
@@ -1006,8 +1160,6 @@ async def process_broadcast_video(message: Message, state: FSMContext):
     )
     
     # Tasdiqlash
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="confirm_broadcast:video"),
@@ -1048,8 +1200,6 @@ async def process_broadcast_document(message: Message, state: FSMContext):
     )
     
     # Tasdiqlash
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Ha, yuborish", callback_data="confirm_broadcast:document"),
@@ -1064,9 +1214,21 @@ async def process_broadcast_document(message: Message, state: FSMContext):
         caption=f"{preview_text}\n\n✅ <b>Barcha foydalanuvchilarga yuborilsinmi?</b>",
         reply_markup=keyboard,
         parse_mode="HTML"
-    )    
+    )
 
-# admin.py faylida process_block_user funksiyasini shunday tuzating:
+# ==================== BLOKLASH ====================
+
+# Bloklashni boshlash
+async def start_blocking_user(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    await state.set_state(AdminStates.blocking_user)
+    
+    await message.answer(
+        "🚫 Bloklash uchun foydalanuvchi ID sini yuboring:",
+        reply_markup=get_back_keyboard()
+    )
 
 async def process_block_user(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -1150,7 +1312,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
             }
             
             # Foydalanuvchiga xabar yuborish
-            await bot.send_message(
+            await bot_instance.send_message(
                 user_id, 
                 block_messages[lang], 
                 parse_mode="HTML"
@@ -1159,7 +1321,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
         except Exception as e:
             logger.error(f"Failed to send block message: {e}")
         
-        # ✅ TO'G'RI: Admin uchun muvaffaqiyatli xabar (format usuli)
+        # ✅ TO'G'RI: Admin uchun muvaffaqiyatli xabar
         success_message = (
             "✅ <b>Foydalanuvchi muvaffaqiyatli bloklandi!</b>\n\n"
             "👤 <b>Ism:</b> {}\n"
@@ -1171,7 +1333,7 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
             user_data[1],
             user_id,
             user_data[2],
-            "🇺🇿 O'zbek" if user_data[3] == 'uz' else "🇷🇺 Русский"  # ✅ Format ichida apostrof muammosiz
+            "🇺🇿 O'zbek" if user_data[3] == 'uz' else "🇷🇺 Русский"
         )
         
         await message.answer(success_message, parse_mode="HTML")
@@ -1184,6 +1346,8 @@ Cheklanmagan (admin tomonidan olib tashlanmaguncha)
     
     await state.clear()
     await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
+
+# ==================== BLOKDAN OCHISH ====================
 
 # Blokdan ochishni boshlash
 async def start_unblocking_user(message: Message, state: FSMContext):
@@ -1300,7 +1464,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
             }
             
             # Foydalanuvchiga xabar yuborish
-            await bot.send_message(
+            await bot_instance.send_message(
                 user_id, 
                 unblock_messages[lang], 
                 parse_mode="HTML"
@@ -1309,7 +1473,7 @@ Dushanba-Yakshanba: 9:00 - 18:00
         except Exception as e:
             logger.error(f"Failed to send unblock message: {e}")
         
-        # Admin uchun muvaffaqiyatli xabar (format() usuli)
+        # Admin uchun muvaffaqiyatli xabar
         success_message = (
             "✅ <b>Foydalanuvchi muvaffaqiyatli blokdan olindi!</b>\n\n"
             "👤 <b>Ism:</b> {}\n"
@@ -1334,6 +1498,8 @@ Dushanba-Yakshanba: 9:00 - 18:00
     
     await state.clear()
     await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
+
+# ==================== KONTENTLAR RO'YXATI ====================
 
 # Kontentlar ro'yxati
 async def show_contents_list(message: Message):
@@ -1384,6 +1550,8 @@ async def show_contents_list(message: Message):
     
     await message.answer(text)
 
+# ==================== KONTENT O'CHIRISH ====================
+
 # Kontent o'chirishni boshlash
 async def start_deleting_content(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
@@ -1426,8 +1594,6 @@ async def process_delete_category(message: Message, state: FSMContext):
         return
     
     # Kontentlarni INLINE KLAVIATURA bilan ko'rsatish
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
     text = f"🗑️ <b>'{message.text}' kategoriyasidagi kontentlar:</b>\n\n"
     
     for content in contents:
@@ -1479,155 +1645,7 @@ async def process_delete_category(message: Message, state: FSMContext):
     await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
     await state.clear()
 
-# Joylashuvlarni ko'rsatish
-async def show_latest_locations(message: Message):
-    """Eng so'nggi joylashuvlarni ko'rsatish"""
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    locations = db.get_latest_locations()
-    
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
-    if not locations:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔄 Yangilash",
-                    callback_data="refresh_locations_admin"
-                )
-            ]
-        ])
-        
-        await message.answer(
-            "📍 <b>Hech qanday joylashuv yo'q.</b>\n\n"
-            "Foydalanuvchilar joylashuv yuborganda, bu yerda ko'rinadi.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        return
-    
-    # Eng so'nggi joylashuvni ko'rsatish
-    latest_location = locations[0]
-    location_id = latest_location[0]
-    user_name = latest_location[2]
-    phone = latest_location[3]
-    status = latest_location[6]
-    sent_time = latest_location[7].split()[1][:5] if isinstance(latest_location[7], str) else str(latest_location[7])[11:16]
-    
-    # Status ranglari
-    status_emoji = "🟡" if status == 'pending' else "🟢" if status == 'accepted' else "🔴"
-    
-    text = f"""📍 <b>ENG SO'NGI JOYLASHUV:</b>
-
-{status_emoji} <b>Holat:</b> {status}
-🆔 <b>ID:</b> {location_id}
-👤 <b>Foydalanuvchi:</b> {user_name}
-📞 <b>Telefon:</b> {phone}
-⏰ <b>Vaqt:</b> {sent_time}
-
-✅ <i>Joylashuvni ko'rib, tasdiqlang yoki rad eting</i>"""
-    
-    # Inline klaviatura
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="📍 Joylashuvni ko'rish",
-                callback_data=f"view_location:{location_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="✅ Tasdiqlash",
-                callback_data=f"accept_location:{location_id}"
-            ),
-            InlineKeyboardButton(
-                text="❌ Rad etish",
-                callback_data=f"reject_location:{location_id}"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="📋 Barcha joylashuvlar",
-                callback_data="view_all_locations_admin"
-            ),
-            InlineKeyboardButton(
-                text="🔄 Yangilash",
-                callback_data="refresh_locations_admin"
-            )
-        ]
-    ])
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-
-# Barcha joylashuvlarni ko'rsatish
-async def show_all_locations_admin(message: Message):
-    """Barcha joylashuvlarni ko'rsatish"""
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    locations = db.get_latest_locations(limit=20)
-    
-    if not locations:
-        await message.answer("📭 Hech qanday joylashuv yo'q.")
-        return
-    
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    
-    text = "📍 <b>BARCHA JOYLASHUVLAR:</b>\n\n"
-    
-    for i, loc in enumerate(locations, 1):
-        location_id = loc[0]
-        user_name = loc[2]
-        phone = loc[3]
-        status = loc[6]
-        sent_time = loc[7].split()[1][:5] if isinstance(loc[7], str) else str(loc[7])[11:16]
-        
-        # Status ranglari
-        status_icon = "🟡" if status == 'pending' else "🟢" if status == 'accepted' else "🔴"
-        
-        text += f"{i}. {status_icon} <b>#{location_id}</b> - {user_name}\n"
-        text += f"   📞 {phone} | ⏰ {sent_time}\n"
-        text += "   ─" * 15 + "\n"
-    
-    # Inline klaviatura
-    keyboard_buttons = []
-    
-    for loc in locations[:5]:
-        location_id = loc[0]
-        user_name = loc[2]
-        
-        keyboard_buttons.append([
-            InlineKeyboardButton(
-                text=f"📍 #{location_id} ({user_name})",
-                callback_data=f"view_location:{location_id}"
-            )
-        ])
-    
-    keyboard_buttons.append([
-        InlineKeyboardButton(
-            text="🔄 Yangilash",
-            callback_data="refresh_locations_admin"
-        ),
-        InlineKeyboardButton(
-            text="📤 Eng so'nggisi",
-            callback_data="view_latest_location"
-        )
-    ])
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-
-# Joylashuv qabul qilish rejimi
-async def location_receive_mode(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    
-    await message.answer(
-        "📍 Joylashuv qabul qilish rejimi yoqildi.\n\n"
-        "Endi foydalanuvchilar joylashuv yuborganida, ularning ma'lumotlari bu yerda ko'rinadi."
-    )
+# ==================== ASOSIY MENYUGA QAYTISH ====================
 
 # Asosiy menyuga qaytish
 async def back_to_main_menu(message: Message, state: FSMContext):
@@ -1638,6 +1656,8 @@ async def back_to_main_menu(message: Message, state: FSMContext):
     await message.answer("🏠 Asosiy menyu", reply_markup=get_main_menu_keyboard('uz'))
     await state.clear()
 
+# ==================== ASOSIY ADMIN HANDLER ====================
+
 async def handle_admin_command(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
@@ -1645,7 +1665,22 @@ async def handle_admin_command(message: Message, state: FSMContext):
     command = message.text
     current_state = await state.get_state()
     
-    # 1. YANGI ODAM QO'SHISH HOLATLARI
+    # ============ JOYLASHUVLAR BOSHQARUVI ============
+    if command in [
+        "📍 Joylashuvlarni Boshqarish",
+        "📍 Eng so'nggi joylashuv",
+        "📋 Barcha joylashuvlar", 
+        "⏳ Kutilayotganlar",
+        "✅ Tasdiqlanganlar",
+        "❌ Rad etilganlar",
+        "🗑️ Eski joylashuvlar",
+        "🔄 Joylashuvlarni yangilash",
+        "🔙 Admin Menyuga"
+    ]:
+        await handle_admin_locations(message, state)
+        return
+    
+    # ============ YANGI ODAM QO'SHISH HOLATLARI ============
     if current_state == AdminStates.waiting_for_user_fullname:
         await process_user_fullname(message, state)
         return
@@ -1658,11 +1693,7 @@ async def handle_admin_command(message: Message, state: FSMContext):
         await process_user_language(message, state)
         return
     
-    elif current_state == AdminStates.waiting_content_id:
-        await process_user_id_input(message, state)
-        return
-    
-    # 2. REKLAMA YUBORISH HOLATLARI
+    # ============ REKLAMA YUBORISH HOLATLARI ============
     elif current_state == AdminStates.sending_message.state:
         await process_broadcast_type(message, state)
         return
@@ -1683,7 +1714,7 @@ async def handle_admin_command(message: Message, state: FSMContext):
         await process_broadcast_document(message, state)
         return
     
-    # 3. KONTENT QO'SHISH HOLATLARI
+    # ============ KONTENT QO'SHISH HOLATLARI ============
     elif current_state == AdminStates.adding_content.state:
         await process_content_category(message, state)
         return
@@ -1700,12 +1731,21 @@ async def handle_admin_command(message: Message, state: FSMContext):
             await state.set_state(AdminStates.waiting_for_content)
         return
     
-    # 4. KONTENT O'CHIRISH HOLATLARI
+    # ============ BLOKLASH HOLATLARI ============
+    elif current_state == AdminStates.blocking_user.state:
+        await process_block_user(message, state)
+        return
+    
+    elif current_state == AdminStates.unblocking_user.state:
+        await process_unblock_user(message, state)
+        return
+    
+    # ============ KONTENT O'CHIRISH HOLATLARI ============
     elif current_state == AdminStates.deleting_content.state:
         await process_delete_category(message, state)
         return
     
-    # 5. ASOSIY BUYRUQLAR
+    # ============ ASOSIY BUYRUQLAR ============
     # 👥 ODAM QO'SHISH
     if command == "👥 Odam Qo'shish":
         await start_adding_user(message, state)
@@ -1760,7 +1800,7 @@ async def handle_admin_command(message: Message, state: FSMContext):
     elif command == "📋 Kontentlar Ro'yxati":
         await show_contents_list(message)
     
-    # 📍 JOYLASHUVNI KO'RISH
+    # 📍 JOYLASHUVLARNI BOSHQARISH (ESKISI)
     elif command == "📍 Joylashuvni Ko'rish":
         await show_latest_locations(message)
     
@@ -1793,3 +1833,267 @@ async def handle_admin_command(message: Message, state: FSMContext):
     # Agar hech qaysi shart bajarilmasa
     else:
         await message.answer("❌ Noma'lum buyruq!", reply_markup=get_admin_keyboard())
+
+# ==================== JOYLASHUVLAR BOSHQARUVI HANDLER ====================
+
+async def handle_admin_locations(message: Message, state: FSMContext):
+    """Admin joylashuvlar boshqaruvi"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    command = message.text
+    
+    if command == "📍 Joylashuvlarni Boshqarish":
+        await message.answer("📍 Joylashuvlar Boshqaruvi", reply_markup=get_locations_management_keyboard())
+    
+    elif command == "📍 Eng so'nggi joylashuv":
+        await show_latest_locations(message)
+    
+    elif command == "📋 Barcha joylashuvlar":
+        await show_all_locations_admin(message)
+    
+    elif command == "⏳ Kutilayotganlar":
+        await show_pending_locations(message)
+    
+    elif command == "✅ Tasdiqlanganlar":
+        await show_accepted_locations(message)
+    
+    elif command == "❌ Rad etilganlar":
+        await show_rejected_locations(message)
+    
+    elif command == "🗑️ Eski joylashuvlar":
+        await delete_old_locations(message)
+    
+    elif command == "🔄 Joylashuvlarni yangilash":
+        await show_latest_locations(message)
+        await message.answer("🔄 Joylashuvlar yangilandi!")
+    
+    elif command == "🔙 Admin Menyuga":
+        await message.answer("👨‍💻 Admin Panel", reply_markup=get_admin_keyboard())
+
+# ==================== CALLBACK HANDLERS (admin.py uchun) ====================
+
+async def handle_view_location_callback(callback: CallbackQuery):
+    """Joylashuvni ko'rish callback"""
+    try:
+        location_id = int(callback.data.split(":")[1])
+        location_data = db.get_location_by_id(location_id)
+        
+        if not location_data:
+            await callback.answer("❌ Joylashuv topilmadi!")
+            return
+        
+        # Joylashuv ma'lumotlari
+        location_info = (
+            f"📍 <b>JOYLASHUV #{location_id}</b>\n\n"
+            f"👤 <b>Ism:</b> {location_data[2]}\n"
+            f"📞 <b>Telefon:</b> {location_data[3]}\n"
+            f"📍 <b>Koordinatalar:</b>\n"
+            f"   • Kenglik: {location_data[4]}\n"
+            f"   • Uzunlik: {location_data[5]}\n"
+            f"📊 <b>Holat:</b> {location_data[6]}\n"
+            f"⏰ <b>Yuborilgan:</b> {location_data[7]}"
+        )
+        
+        # Joylashuvni yuborish
+        await callback.message.answer_location(
+            latitude=location_data[4],
+            longitude=location_data[5],
+            caption=f"📍 Joylashuv #{location_id}\n👤 {location_data[2]}\n📞 {location_data[3]}"
+        )
+        
+        # Tasdiqlash/Rad etish tugmalari
+        keyboard_buttons = []
+        
+        if location_data[6] == 'pending':
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text="✅ Tasdiqlash",
+                    callback_data=f"accept_location:{location_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Rad etish",
+                    callback_data=f"reject_location:{location_id}"
+                )
+            ])
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text="📞 Telefon qilish",
+                url=f"tel:{location_data[3].replace('+', '').replace(' ', '')}"
+            ),
+            InlineKeyboardButton(
+                text="📍 Barcha joylashuvlar",
+                callback_data="view_all_locations_admin"
+            )
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        await callback.message.answer(location_info, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+        
+    except Exception as e:
+        logger.error(f"View location error: {e}")
+        await callback.answer("❌ Xatolik!", show_alert=True)
+
+async def handle_accept_location_callback(callback: CallbackQuery):
+    """Joylashuvni tasdiqlash callback"""
+    try:
+        location_id = int(callback.data.split(":")[1])
+        location_data = db.get_location_by_id(location_id)
+        
+        if not location_data:
+            await callback.answer("❌ Joylashuv topilmadi!")
+            return
+        
+        # Statusni yangilash
+        db.update_location_status(location_id, "accepted")
+        
+        # Foydalanuvchiga xabar yuborish
+        user_id = location_data[1]
+        user_data = db.get_user(user_id)
+        
+        if user_data:
+            lang = user_data[3]
+            
+            user_message = {
+                "uz": "✅ <b>Joylashuvingiz tasdiqlandi!</b>\n\n"
+                      "Usta Muhiddin tez orada siz bilan bog'lanadi.\n"
+                      "📞 Telefon: +998 88 044-55-50\n\n"
+                      "📍 <i>Joylashuvingiz:</i>\n"
+                      f"• Kenglik: {location_data[4]}\n"
+                      f"• Uzunlik: {location_data[5]}",
+                "ru": "✅ <b>Ваше местоположение подтверждено!</b>\n\n"
+                      "Мастер Мухиддин скоро свяжется с вами.\n"
+                      "📞 Телефон: +998 88 044-55-50\n\n"
+                      "📍 <i>Ваше местоположение:</i>\n"
+                      f"• Широта: {location_data[4]}\n"
+                      f"• Долгота: {location_data[5]}"
+            }
+            
+            try:
+                if bot_instance:
+                    await bot_instance.send_message(user_id, user_message[lang], parse_mode="HTML")
+                else:
+                    from main import bot
+                    await bot.send_message(user_id, user_message[lang], parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Failed to notify user: {e}")
+        
+        # Admin uchun xabar
+        await callback.answer(f"✅ Joylashuv #{location_id} tasdiqlandi!", show_alert=True)
+        
+        # Xabarni yangilash
+        await callback.message.delete()
+        await show_latest_locations(callback.message)
+        
+    except Exception as e:
+        logger.error(f"Accept location error: {e}")
+        await callback.answer("❌ Xatolik!", show_alert=True)
+
+async def handle_reject_location_callback(callback: CallbackQuery):
+    """Joylashuvni rad etish callback"""
+    try:
+        location_id = int(callback.data.split(":")[1])
+        location_data = db.get_location_by_id(location_id)
+        
+        if not location_data:
+            await callback.answer("❌ Joylashuv topilmadi!")
+            return
+        
+        # Statusni yangilash
+        db.update_location_status(location_id, "rejected")
+        
+        # Foydalanuvchiga xabar yuborish
+        user_id = location_data[1]
+        user_data = db.get_user(user_id)
+        
+        if user_data:
+            lang = user_data[3]
+            
+            user_message = {
+                "uz": "❌ <b>Joylashuvingiz rad etildi.</b>\n\n"
+                      "Iltimos, boshqa joylashuv yuboring yoki telefon orqali bog'laning.\n"
+                      "📞 +998 88 044-55-50",
+                "ru": "❌ <b>Ваше местоположение отклонено.</b>\n\n"
+                      "Пожалуйста, отправьте другое местоположение или свяжитесь по телефону.\n"
+                      "📞 +998 88 044-55-50"
+            }
+            
+            try:
+                if bot_instance:
+                    await bot_instance.send_message(user_id, user_message[lang], parse_mode="HTML")
+                else:
+                    from main import bot
+                    await bot.send_message(user_id, user_message[lang], parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Failed to notify user: {e}")
+        
+        # Admin uchun xabar
+        await callback.answer(f"❌ Joylashuv #{location_id} rad etildi!", show_alert=True)
+        
+        # Xabarni yangilash
+        await callback.message.delete()
+        await show_latest_locations(callback.message)
+        
+    except Exception as e:
+        logger.error(f"Reject location error: {e}")
+        await callback.answer("❌ Xatolik!", show_alert=True)
+
+# ==================== CALLBACK HANDLERLAR (main.py ga o'tkazish uchun) ====================
+
+# Bu funksiyalar main.py da ishlatiladi
+async def handle_admin_callback(callback: CallbackQuery, state: FSMContext):
+    """Admin callback'larini boshqarish"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Faqat admin!")
+        return
+    
+    data = callback.data
+    
+    try:
+        if data.startswith("view_location:"):
+            await handle_view_location_callback(callback)
+        
+        elif data.startswith("accept_location:"):
+            await handle_accept_location_callback(callback)
+        
+        elif data.startswith("reject_location:"):
+            await handle_reject_location_callback(callback)
+        
+        elif data == "refresh_locations_admin":
+            from admin import show_latest_locations
+            await callback.message.delete()
+            await show_latest_locations(callback.message)
+            await callback.answer("🔄 Yangilandi!")
+        
+        elif data == "view_all_locations_admin":
+            from admin import show_all_locations_admin
+            await callback.message.delete()
+            await show_all_locations_admin(callback.message)
+            await callback.answer()
+        
+        elif data == "view_latest_location":
+            from admin import show_latest_locations
+            await callback.message.delete()
+            await show_latest_locations(callback.message)
+            await callback.answer()
+        
+        elif data == "locations_management_back":
+            from admin import get_locations_management_keyboard
+            await callback.message.delete()
+            await callback.message.answer("📍 Joylashuvlar Boshqaruvi", reply_markup=get_locations_management_keyboard())
+            await callback.answer()
+        
+        elif data.startswith("copy_link:"):
+            # Havolani nusxalash
+            link = data.split(":")[1]
+            await callback.answer(f"✅ Havola nusxalandi!\n{link[:50]}...", show_alert=True)
+        
+        else:
+            await callback.answer("❌ Noma'lum buyruq!")
+    
+    except Exception as e:
+        logger.error(f"Callback error: {e}")
+        await callback.answer("❌ Xatolik yuz berdi!", show_alert=True)

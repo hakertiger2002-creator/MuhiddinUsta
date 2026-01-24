@@ -3,9 +3,20 @@
 import sqlite3
 import datetime
 from typing import List, Tuple, Optional
+# backup_database.py
+import shutil
+
+# database.py faylida Database class'iga qo'shing:
 
 class Database:
     def __init__(self, db_path: str = "database.db"):
+        # Renderda database saqlanishini ta'minlash
+        if os.getenv('RENDER', False):
+            # Render'da persistent storage
+            db_path = "/tmp/database.db" if not os.path.exists("/data") else "/data/database.db"
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.create_tables()
     
@@ -52,6 +63,62 @@ class Database:
         ''')
         
         self.conn.commit()
+        
+    def backup(self):
+        """Database'ni zaxira nusxasini olish"""
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = f"backups/backup_database_{timestamp}.db"
+        
+        # Backups papkasini yaratish
+        os.makedirs("backups", exist_ok=True)
+        
+        shutil.copy2("database.db", backup_file)
+        print(f"✅ Database backed up to {backup_file}")
+        
+        # Eski backup'larni tozalash
+        self._cleanup_old_backups()
+        
+        return backup_file
+    
+    def _cleanup_old_backups(self, max_backups=5):
+        """Eski backup fayllarini o'chirish"""
+        if not os.path.exists("backups"):
+            return
+        
+        backup_files = []
+        for file in os.listdir("backups"):
+            if file.startswith("backup_database_") and file.endswith(".db"):
+                file_path = os.path.join("backups", file)
+                backup_files.append((file_path, os.path.getctime(file_path)))
+        
+        backup_files.sort(key=lambda x: x[1], reverse=True)
+        
+        if len(backup_files) > max_backups:
+            for file_path, _ in backup_files[max_backups:]:
+                os.remove(file_path)
+                print(f"🗑️ Eski backup o'chirildi: {os.path.basename(file_path)}")
+    
+    def restore(self, backup_file):
+        """Backup'dan restore qilish"""
+        if not os.path.exists(backup_file):
+            print("❌ Backup fayli topilmadi!")
+            return False
+        
+        # Database yopish
+        self.conn.close()
+        
+        # Asl faylni o'chirish
+        if os.path.exists("database.db"):
+            os.remove("database.db")
+        
+        # Backup'dan restore
+        shutil.copy2(backup_file, "database.db")
+        
+        # Yangi connection ochish
+        self.conn = sqlite3.connect("database.db", check_same_thread=False)
+        
+        print(f"✅ Database restored from {backup_file}")
+        return True    
     
     def add_user(self, user_id: int, full_name: str, phone_number: str, language: str = 'uz'):
         cursor = self.conn.cursor()

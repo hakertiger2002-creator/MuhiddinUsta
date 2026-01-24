@@ -1006,8 +1006,8 @@ async def handle_contact(message: Message):
         lang = user_data[3]
         
         response = {
-            "uz": f"✅ Telefon raqamingiz qabul qilindi! Usta Elbek tez orada siz bilan bog'lanadi.\n📞 Ustaning telefoni: +998 (95) 902-32-32",
-            "ru": f"✅ Ваш номер телефона принят! Мастер Элбек скоро свяжется с вами.\n📞 Телефон мастера: +998 (95) 902-32-32"
+            "uz": f"✅ Telefon raqamingiz qabul qilindi! Usta Muhiddin tez orada siz bilan bog'lanadi.\n📞 Ustaning telefoni: +998 (88) 044-55-50",
+            "ru": f"✅ Ваш номер телефона принят! Мастер Мухиддин скоро свяжется с вами.\n📞 Телефон мастера: +998 (88) 044-55-50"
         }
         
         await message.answer(response[lang])
@@ -1602,8 +1602,8 @@ async def handle_accept_location(callback: CallbackQuery):
             lang = user_data[3]
             
             user_message = {
-                "uz": "✅ <b>Joylashuvingiz tasdiqlandi!</b>\n\nUsta Muhiddin tez orada siz bilan bog'lanadi.\n📞 Telefon: +998 95 902-32-32",
-                "ru": "✅ <b>Ваше местоположение подтверждено!</b>\n\nМастер Мухиддин скоро свяжется с вами.\n📞 Телефон: +998 95 902-32-32"
+                "uz": "✅ <b>Joylashuvingiz tasdiqlandi!</b>\n\nUsta Muhiddin tez orada siz bilan bog'lanadi.\n📞 Telefon: +998 88 044-55-50",
+                "ru": "✅ <b>Ваше местоположение подтверждено!</b>\n\nМастер Мухиддин скоро свяжется с вами.\n📞 Телефон: +998 88 044-55-50"
             }
             
             try:
@@ -1649,8 +1649,8 @@ async def handle_reject_location(callback: CallbackQuery):
             lang = user_data[3]
             
             user_message = {
-                "uz": "❌ <b>Joylashuvingiz rad etildi.</b>\n\nIltimos, boshqa joylashuv yuboring yoki telefon orqali bog'laning.\n📞 +998 95 902-32-32",
-                "ru": "❌ <b>Ваше местоположение отклонено.</b>\n\nПожалуйста, отправьте другое местоположение или свяжитесь по телефону.\n📞 +998 95 902-32-32"
+                "uz": "❌ <b>Joylashuvingiz rad etildi.</b>\n\nIltimos, boshqa joylashuv yuboring yoki telefon orqali bog'laning.\n📞 +998 88 044-55-50",
+                "ru": "❌ <b>Ваше местоположение отклонено.</b>\n\nПожалуйста, отправьте другое местоположение или свяжитесь по телефону.\n📞 +998 88 044-55-50"
             }
             
             try:
