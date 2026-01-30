@@ -2,56 +2,60 @@ import sqlite3
 import datetime
 from typing import List, Tuple, Optional
 import os  # ✅ BU QATORNI QO'SHING!
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self, db_path: str = "database.db"):
-        # ✅ TO'G'RI: os mavjudligini tekshirish
-        # RENDER uchun: Database faylini persistent joyga saqlash
-        render_env = os.getenv('RENDER', 'False')
-        print(f"🔧 RENDER environment variable: {render_env}")
+    def __init__(self, db_path: str = None):
+        # ✅ RENDER uchun PERSISTENT yo'l
+        render = os.getenv('RENDER', '').lower() == 'true'
         
-        if render_env.lower() == 'true':
-            # Renderda persistent storage yo'llarini tekshirish
-            possible_paths = [
-                "/opt/render/project/src/database.db",
-                "/data/database.db", 
-                "/tmp/database.db",
-                "database.db"
-            ]
+        if render:
+            # ✅ MUHIM: Render'da PERSISTENT yo'l
+            # Bu yo'l deploy'lar orasida saqlanadi
+            db_path = "/opt/render/project/src/persistent_data/database.db"
             
-            for path in possible_paths:
-                # Papkani yaratish (agar yo'q bo'lsa)
-                os.makedirs(os.path.dirname(path), exist_ok=True)
+            # Papkani majburiy yaratish
+            os.makedirs("/opt/render/project/src/persistent_data", exist_ok=True)
+            
+            logger.info(f"🎯 RENDER mode: Database yo'li: {db_path}")
+            
+            # Agar fayl yo'q bo'lsa, qo'shni papkadan qidirish
+            if not os.path.exists(db_path):
+                # Oldingi deploy'lardan qidirish
+                possible_locations = [
+                    "/opt/render/project/src/database.db",  # Oldingi joy
+                    "database.db",  # Relative path
+                ]
                 
-                # Agar fayl mavjud bo'lsa, shu yo'lni ishlatish
-                if os.path.exists(path):
-                    db_path = path
-                    print(f"✅ Found existing database at: {db_path}")
-                    break
-                else:
-                    # Fayl yo'q, lekin papka mavjud bo'lsa
-                    if os.path.exists(os.path.dirname(path)):
-                        db_path = path
-                        print(f"📁 Will use path: {db_path}")
+                for loc in possible_locations:
+                    if os.path.exists(loc):
+                        logger.info(f"📦 Oldingi database topildi: {loc}")
+                        # Oldingi database'ni yangi joyga ko'chirish
+                        import shutil
+                        shutil.copy2(loc, db_path)
                         break
-            
-            # Hech qaysi yo'l topilmasa, oddiy yo'lni ishlatish
-            if db_path == "database.db":
-                db_path = "/opt/render/project/src/database.db"
-                os.makedirs(os.path.dirname(db_path), exist_ok=True)
-                print(f"📁 Created new database at: {db_path}")
-        
-        print(f"🎯 Final database path: {db_path}")
+        else:
+            # Local development
+            if db_path is None:
+                db_path = "database.db"
         
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.create_tables()
-        print(f"✅ Database initialized successfully")
+        logger.info(f"📁 Database fayli: {db_path}")
+        
+        try:
+            self.conn = sqlite3.connect(db_path, check_same_thread=False)
+            logger.info("✅ Database connection ochildi")
+            self.create_tables()
+        except Exception as e:
+            logger.error(f"❌ Database connection xatosi: {e}")
+            raise
     
     def create_tables(self):
         cursor = self.conn.cursor()
-    
-        # Foydalanuvchilar jadvali
+        
+        # Users jadvali
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             full_name TEXT,
@@ -61,7 +65,7 @@ class Database:
             is_blocked INTEGER DEFAULT 0
         )''')
         
-        # Kontentlar jadvali
+        # Contents jadvali - MUHIM!
         cursor.execute('''CREATE TABLE IF NOT EXISTS contents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT,
@@ -71,7 +75,7 @@ class Database:
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         
-        # Joylashuvlar jadvali
+        # Locations jadvali
         cursor.execute('''CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
@@ -85,7 +89,12 @@ class Database:
         )''')
         
         self.conn.commit()
-        print("✅ Database tables created/verified")
+        logger.info("✅ Database jadvallari yaratildi/tekshirildi")
+        
+        # Statistikani log qilish
+        cursor.execute("SELECT COUNT(*) FROM contents")
+        content_count = cursor.fetchone()[0]
+        logger.info(f"📊 Database'dagi kontentlar soni: {content_count}")
         
     def backup(self):
         """Database'ni zaxira nusxasini olish"""
